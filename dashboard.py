@@ -76,7 +76,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Path to data
-ASSET_DIR = "/Users/vijeta/Downloads/vasanth valley/Asset"
+ASSET_DIR = os.path.join(os.path.dirname(__file__), "Asset")
 
 @st.cache_data
 def load_student_data():
