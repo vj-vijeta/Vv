@@ -41,10 +41,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-<<<<<<< HEAD
-# Path to data
-ASSET_DIR = os.path.join(os.path.dirname(__file__), "Asset")
-=======
 # Path to the data folder
 ASSET_DIR = "Asset"
 
@@ -54,7 +50,6 @@ SUBJECT_MAP = {
 }
 
 # --- Data Loading Functions ---
->>>>>>> 7f3c811 (refactor: update ASSET_DIR to use relative path instead of absolute path)
 
 @st.cache_data
 def load_yoy_data():
