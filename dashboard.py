@@ -27,6 +27,17 @@ st.markdown("""
         text-align: center;
         margin-bottom: 20px;
     }
+    .subject-card {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 10px;
+        border-top: 5px solid #007bff;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        transition: transform 0.2s;
+    }
+    .subject-card:hover {
+        transform: translateY(-5px);
+    }
     .metric-label {
         font-size: 14px;
         color: #6c757d;
@@ -34,7 +45,7 @@ st.markdown("""
         margin-bottom: 8px;
     }
     .metric-value {
-        font-size: 28px;
+        font-size: 24px;
         color: #212529;
         font-weight: 700;
     }
@@ -46,14 +57,6 @@ st.markdown("""
         margin-bottom: 20px;
         border-bottom: 2px solid #007bff;
         padding-bottom: 8px;
-    }
-    .grade-badge {
-        background-color: #007bff;
-        color: white;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 16px;
-        font-weight: 600;
     }
     .skill-card {
         padding: 15px;
@@ -99,138 +102,158 @@ SUBJECT_MAP = {
     "Social Studies": "sst"
 }
 
+# --- Load Data ---
+student_df = load_student_data()
+if student_df is not None:
+    student_df.columns = [c.replace('\ufeff', '') for c in student_df.columns]
+else:
+    st.error("Could not load student data.")
+    st.stop()
+
 # --- Sidebar ---
 st.sidebar.image("https://www.vasantvalley.org/vasantvalley/images/logo.png", width=150)
-st.sidebar.title("Global Filters")
+st.sidebar.title("Configuration")
 
-student_df = load_student_data()
-
-if student_df is not None:
-    # Cleanup column names
-    student_df.columns = [c.replace('\ufeff', '') for c in student_df.columns]
-    
-    subjects = sorted(student_df['Subject'].unique().tolist())
-    selected_subject = st.sidebar.selectbox("Select Subject", subjects, index=0)
-    
-    classes = sorted(student_df['Class'].unique().tolist())
-    selected_classes = st.sidebar.multiselect("Select Grades (Classes)", classes, default=classes)
-    
-    # Filter data globally for the subject
-    df_subject = student_df[student_df['Subject'] == selected_subject]
-    df_filtered = df_subject[df_subject['Class'].isin(selected_classes)]
-else:
-    st.error("Could not load student data. Please check the 'Asset' directory.")
-    st.stop()
+# Global Grade Selection
+classes = sorted(student_df['Class'].unique().tolist())
+selected_grade = st.sidebar.selectbox("Select Grade (Class)", classes, index=0)
 
 # --- Main Dashboard ---
 st.title("📊 Asset Performance Dashboard")
-st.markdown(f"### Vasant Valley School | {selected_subject} - Winter 2025")
+st.markdown(f"### Vasant Valley School | Grade {selected_grade} - Winter 2025")
 
 # Create Tabs
-tab_overview, tab_grades = st.tabs(["🏛️ School Overview", "🎓 Grade-wise Reports"])
+tab_home, tab_analysis, tab_overview = st.tabs(["🏠 Grade Home", "🔍 Subject Analysis", "🏛️ School Overview"])
 
-with tab_overview:
-    st.markdown('<div class="section-header">Aggregated Metrics</div>', unsafe_allow_html=True)
+with tab_home:
+    st.markdown('<div class="section-header">Subject-wise Summary for Grade ' + str(selected_grade) + '</div>', unsafe_allow_html=True)
     
+    grade_df = student_df[student_df['Class'] == selected_grade]
+    subjects = sorted(grade_df['Subject'].unique().tolist())
+    
+    cols = st.columns(3)
+    for i, subject in enumerate(subjects):
+        with cols[i % 3]:
+            sub_df = grade_df[grade_df['Subject'] == subject]
+            avg_score = sub_df['Raw Score'].mean()
+            avg_perc = sub_df['Percentile'].mean()
+            toppers = len(sub_df[sub_df['Class Subject Topper'] == 'Yes'])
+            
+            st.markdown(f"""
+                <div class="subject-card">
+                    <h4 style="margin-top:0; color:#007bff;">{subject}</h4>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <div>
+                            <span style="font-size:12px; color:#6c757d;">AVG SCORE</span><br/>
+                            <span style="font-size:20px; font-weight:700;">{avg_score:.1f}</span>
+                        </div>
+                        <div>
+                            <span style="font-size:12px; color:#6c757d;">PERCENTILE</span><br/>
+                            <span style="font-size:20px; font-weight:700;">{avg_perc:.1f}</span>
+                        </div>
+                    </div>
+                    <div style="font-size:14px; color:#28a745; font-weight:600;">
+                        🏆 {toppers} Subject Toppers
+                    </div>
+                </div>
+                <br/>
+            """, unsafe_allow_html=True)
+
+    # Cross-Subject Comparison Chart
+    st.markdown("#### Subject Comparison")
+    sub_metrics = grade_df.groupby('Subject').agg({
+        'Raw Score': 'mean',
+        'Percentile': 'mean'
+    }).reset_index()
+    
+    fig_home = px.bar(
+        sub_metrics, x='Subject', y='Percentile', 
+        title='Average Percentile across Subjects',
+        color='Subject', color_discrete_sequence=px.colors.qualitative.Pastel
+    )
+    fig_home.update_layout(showlegend=False)
+    st.plotly_chart(fig_home, use_container_width=True)
+
+with tab_analysis:
+    st.markdown('<div class="section-header">Detailed Subject Analysis</div>', unsafe_allow_html=True)
+    
+    analysis_subject = st.selectbox("Select Subject for Deep Dive", subjects)
+    
+    # Analysis Filters
+    df_analysis = grade_df[grade_df['Subject'] == analysis_subject]
+    
+    # Metrics Row
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown(f"""<div class="metric-card"><div class="metric-label">Total Students</div><div class="metric-value">{len(df_filtered['Name'].unique())}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Students</div><div class="metric-value">{len(df_analysis)}</div></div>""", unsafe_allow_html=True)
     with col2:
-        st.markdown(f"""<div class="metric-card"><div class="metric-label">Avg Raw Score</div><div class="metric-value">{df_filtered['Raw Score'].mean():.1f}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Avg Raw</div><div class="metric-value">{df_analysis['Raw Score'].mean():.1f}</div></div>""", unsafe_allow_html=True)
     with col3:
-        st.markdown(f"""<div class="metric-card"><div class="metric-label">Avg Percentile</div><div class="metric-value">{df_filtered['Percentile'].mean():.1f}</div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Avg Percentile</div><div class="metric-value">{df_analysis['Percentile'].mean():.1f}</div></div>""", unsafe_allow_html=True)
     with col4:
-        toppers = len(df_filtered[df_filtered['Class Subject Topper'] == 'Yes'])
-        st.markdown(f"""<div class="metric-card"><div class="metric-label">Subject Toppers</div><div class="metric-value">{toppers}</div></div>""", unsafe_allow_html=True)
+        a_toppers = len(df_analysis[df_analysis['Class Subject Topper'] == 'Yes'])
+        st.markdown(f"""<div class="metric-card"><div class="metric-label">Toppers</div><div class="metric-value">{a_toppers}</div></div>""", unsafe_allow_html=True)
 
-    # Usage Row
-    u_col1, u_col2 = st.columns(2)
-    with u_col1:
+    # Skill Performance
+    skill_code = SUBJECT_MAP.get(analysis_subject)
+    skill_df = load_skill_data(skill_code)
+    
+    if skill_df is not None:
+        skill_df.columns = [c.replace('\ufeff', '') for c in skill_df.columns]
+        g_skill_df = skill_df[skill_df['CLASS'] == selected_grade]
+        
+        if not g_skill_df.empty:
+            school_col = "Vasant Valley School, New Delhi"
+            nat_col = "National Average"
+            g_skill_df = g_skill_df.sort_values(by=school_col, ascending=False)
+            
+            s1, s2 = st.columns(2)
+            with s1:
+                st.markdown("#### Top Performing Skills")
+                for _, row in g_skill_df.head(3).iterrows():
+                    st.markdown(f"""<div class="skill-card best-skill">
+                        <strong>{row['SKILL_NAME']}</strong><br/>
+                        School: {row[school_col]:.1f}% | National: {row[nat_col]:.1f}%
+                    </div>""", unsafe_allow_html=True)
+            with s2:
+                st.markdown("#### Skills Needing Attention")
+                for _, row in g_skill_df.tail(3).iloc[::-1].iterrows():
+                    st.markdown(f"""<div class="skill-card worst-skill">
+                        <strong>{row['SKILL_NAME']}</strong><br/>
+                        School: {row[school_col]:.1f}% | National: {row[nat_col]:.1f}%
+                    </div>""", unsafe_allow_html=True)
+            
+            fig_comp = go.Figure()
+            fig_comp.add_trace(go.Bar(
+                y=g_skill_df['SKILL_NAME'], x=g_skill_df[school_col],
+                name='Vasant Valley', orientation='h', marker_color='#007bff'
+            ))
+            fig_comp.add_trace(go.Bar(
+                y=g_skill_df['SKILL_NAME'], x=g_skill_df[nat_col],
+                name='National Average', orientation='h', marker_color='#ced4da'
+            ))
+            fig_comp.update_layout(barmode='group', height=500, title=f"Skill Benchmarking - {analysis_subject}")
+            st.plotly_chart(fig_comp, use_container_width=True)
+        else:
+            st.info(f"Detailed skill data for Grade {selected_grade} is not available for {analysis_subject}.")
+    else:
+        st.warning("Skill report data missing.")
+
+with tab_overview:
+    st.markdown('<div class="section-header">School-wide Overview</div>', unsafe_allow_html=True)
+    o_col1, o_col2 = st.columns(2)
+    with o_col1:
         fig_part = px.bar(
-            df_filtered.groupby('Class').size().reset_index(name='Count'),
-            x='Class', y='Count', title='Participation by Grade',
-            color='Class', color_discrete_sequence=px.colors.qualitative.Set3
+            student_df.groupby(['Class', 'Subject']).size().reset_index(name='Count'),
+            x='Class', y='Count', color='Subject', title='Total Participation - All Grades'
         )
         st.plotly_chart(fig_part, use_container_width=True)
-    with u_col2:
-        fig_dist = px.box(
-            df_filtered, x='Class', y='Percentile', title='Percentile Distribution by Grade',
-            color='Class'
+    with o_col2:
+        fig_trend = px.box(
+            student_df, x='Subject', y='Percentile', color='Subject',
+            title='Subject Proficiency Distribution (All Grades)'
         )
-        st.plotly_chart(fig_dist, use_container_width=True)
-
-with tab_grades:
-    if not selected_classes:
-        st.warning("Please select at least one grade in the sidebar.")
-    else:
-        for grade in selected_classes:
-            st.markdown(f'<div class="section-header">Grade {grade} - {selected_subject}</div>', unsafe_allow_html=True)
-            
-            grade_df = df_filtered[df_filtered['Class'] == grade]
-            
-            # Grade Metrics
-            m1, m2, m3, m4 = st.columns(4)
-            with m1:
-                st.markdown(f"""<div class="metric-card"><div class="metric-label">Students</div><div class="metric-value">{len(grade_df)}</div></div>""", unsafe_allow_html=True)
-            with m2:
-                st.markdown(f"""<div class="metric-card"><div class="metric-label">Avg Raw</div><div class="metric-value">{grade_df['Raw Score'].mean():.1f}</div></div>""", unsafe_allow_html=True)
-            with m3:
-                st.markdown(f"""<div class="metric-card"><div class="metric-label">Avg Percentile</div><div class="metric-value">{grade_df['Percentile'].mean():.1f}</div></div>""", unsafe_allow_html=True)
-            with m4:
-                g_toppers = len(grade_df[grade_df['Class Subject Topper'] == 'Yes'])
-                st.markdown(f"""<div class="metric-card"><div class="metric-label">Toppers</div><div class="metric-value">{g_toppers}</div></div>""", unsafe_allow_html=True)
-
-            # Skill Performance for this Grade
-            skill_code = SUBJECT_MAP.get(selected_subject)
-            skill_df = load_skill_data(skill_code)
-            
-            if skill_df is not None:
-                skill_df.columns = [c.replace('\ufeff', '') for c in skill_df.columns]
-                # Filter by Class correctly (Skill files use CLASS column)
-                g_skill_df = skill_df[skill_df['CLASS'] == grade]
-                
-                if not g_skill_df.empty:
-                    school_col = "Vasant Valley School, New Delhi"
-                    nat_col = "National Average"
-                    
-                    g_skill_df = g_skill_df.sort_values(by=school_col, ascending=False)
-                    
-                    s1, s2 = st.columns(2)
-                    with s1:
-                        st.markdown("#### Top Performing Skills")
-                        for _, row in g_skill_df.head(3).iterrows():
-                            st.markdown(f"""<div class="skill-card best-skill">
-                                <strong>{row['SKILL_NAME']}</strong><br/>
-                                School: {row[school_col]:.1f}% | National: {row[nat_col]:.1f}%
-                            </div>""", unsafe_allow_html=True)
-                    with s2:
-                        st.markdown("#### Skills Needing Attention")
-                        for _, row in g_skill_df.tail(3).iloc[::-1].iterrows():
-                            st.markdown(f"""<div class="skill-card worst-skill">
-                                <strong>{row['SKILL_NAME']}</strong><br/>
-                                School: {row[school_col]:.1f}% | National: {row[nat_col]:.1f}%
-                            </div>""", unsafe_allow_html=True)
-                    
-                    # Grade-wise comparison bar chart
-                    fig_comp = go.Figure()
-                    fig_comp.add_trace(go.Bar(
-                        y=g_skill_df['SKILL_NAME'], x=g_skill_df[school_col],
-                        name='Vasant Valley', orientation='h', marker_color='#007bff'
-                    ))
-                    fig_comp.add_trace(go.Bar(
-                        y=g_skill_df['SKILL_NAME'], x=g_skill_df[nat_col],
-                        name='National Average', orientation='h', marker_color='#ced4da'
-                    ))
-                    fig_comp.update_layout(barmode='group', height=400, margin=dict(l=20, r=20, t=30, b=20),
-                                         title=f"Skill Benchmarking - Grade {grade}")
-                    st.plotly_chart(fig_comp, use_container_width=True)
-                else:
-                    st.info(f"Detailed skill performance data for Grade {grade} is not available in the report.")
-            else:
-                st.warning(f"Skill report for {selected_subject} missing.")
-            
-            st.divider()
+        st.plotly_chart(fig_trend, use_container_width=True)
 
 st.sidebar.markdown("---")
-st.sidebar.info("Data source: Ei ASSET Winter 2025 Reports")
-st.sidebar.markdown("Separate reports are generated for each selected grade in the 'Grade-wise Reports' tab.")
+st.sidebar.info("The 'Grade Home' tab provides a bird's-eye view of all subjects for your selected grade.")
