@@ -3,6 +3,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import grade5_data as g5
+import grade8_data as g8
 
 # Set page configuration
 st.set_page_config(
@@ -38,6 +40,17 @@ st.markdown("""
     .skill-card { padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 5px solid; }
     .best-skill { background-color: #e6ffed; border-left-color: #28a745; }
     .worst-skill { background-color: #fff5f5; border-left-color: #dc3545; }
+    .student-metric {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #ddd;
+        text-align: center;
+        margin-bottom: 15px;
+    }
+    .student-metric h4 { margin: 0; color: #6c757d; font-size: 14px; }
+    .student-metric .value { font-size: 24px; font-weight: bold; color: #1a1a1a; margin-top: 5px; }
+    .student-metric .percentile { font-size: 14px; color: #007bff; margin-top: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -93,9 +106,22 @@ def load_question_data():
             return pd.DataFrame()
     return pd.DataFrame()
 
+@st.cache_data
+def load_comparison_data():
+    path_bench = os.path.join(ASSET_DIR, "skill benchmarking.csv")
+    path_comp_skill = os.path.join(ASSET_DIR, "skill.csv")
+    path_subject = os.path.join(ASSET_DIR, "subject.csv")
+    
+    df_bench = pd.read_csv(path_bench) if os.path.exists(path_bench) else pd.DataFrame()
+    df_skill = pd.read_csv(path_comp_skill) if os.path.exists(path_comp_skill) else pd.DataFrame()
+    df_sub = pd.read_csv(path_subject) if os.path.exists(path_subject) else pd.DataFrame()
+    
+    return df_bench, df_skill, df_sub
+
 # --- Initialize Data ---
 yoy_df = load_yoy_data()
 question_df = load_question_data()
+df_bench, df_comp_skill, df_sub = load_comparison_data()
 
 # --- Sidebar Controls ---
 st.sidebar.image("https://ei.study/wp-content/uploads/2022/10/edilogo.png", width=60)
@@ -113,11 +139,13 @@ st.title("📊 Comprehensive Asset Performance Dashboard")
 st.markdown(f"### Vasant Valley School | Grade {selected_grade} | {selected_subject}")
 
 # --- Tabs ---
-tab_birdseye, tab_skills, tab_yoy, tab_misconceptions = st.tabs([
+tab_birdseye, tab_skills, tab_yoy, tab_comparisons, tab_misconceptions, tab_student = st.tabs([
     "🦅 Bird's-Eye View", 
     "🎯 Skill Deep Dive", 
     "📉 YoY Trends", 
-    "🛑 Misconception Analysis"
+    "⚖️ Comparisons",
+    "🛑 Misconception Analysis",
+    "👤 Student Analysis"
 ])
 
 # TAB 1: BIRD'S-EYE VIEW
@@ -192,9 +220,46 @@ with tab_yoy:
             fig_trend.update_layout(xaxis=dict(tickmode='linear'))
             st.plotly_chart(fig_trend, use_container_width=True)
 
-# ==========================================
-# TAB 4: MISCONCEPTIONS & QUESTION ANALYSIS
-# ==========================================
+# TAB 4: COMPARISONS
+with tab_comparisons:
+    st.markdown(f'<div class="section-header">School Performance Comparisons - Grade {selected_grade}</div>', unsafe_allow_html=True)
+    
+    st.markdown("### Subject Growth (2022 - 2025)")
+    if not df_sub.empty:
+        sub_data = df_sub[df_sub['Class'] == selected_grade]
+        if not sub_data.empty:
+            sub_trend = sub_data.melt(id_vars=['Subject'], value_vars=['2022', '2023', '2024', '2025'], 
+                                      var_name='Year', value_name='Score')
+            fig_sub_trend = px.line(sub_trend, x='Year', y='Score', color='Subject', markers=True, title=f"Subject Scaled Scores over Time (Grade {selected_grade})")
+            st.plotly_chart(fig_sub_trend, use_container_width=True)
+        else:
+            st.info("No subject trend data found.")
+
+    st.markdown("### Skill Benchmarking (2024 vs 2025)")
+    if not df_bench.empty:
+        bench_data = df_bench[df_bench['Class'] == selected_grade]
+        if not bench_data.empty:
+            fig_bench = go.Figure()
+            fig_bench.add_trace(go.Bar(x=bench_data['Subject'], y=bench_data['Vasant Valley School (New Delhi) (2024)'], name='2024', marker_color='#ced4da'))
+            fig_bench.add_trace(go.Bar(x=bench_data['Subject'], y=bench_data['Vasant Valley School (New Delhi) (2025)'], name='2025', marker_color='#007bff'))
+            fig_bench.update_layout(barmode='group', title=f"Year-over-Year Benchmarking (Grade {selected_grade})")
+            st.plotly_chart(fig_bench, use_container_width=True)
+        else:
+            st.info("No skill benchmarking data found.")
+
+    st.markdown("### Micro-Skill Performance vs National Average")
+    if not df_comp_skill.empty:
+        comp_skill_data = df_comp_skill[df_comp_skill['CLASS'] == selected_grade]
+        if not comp_skill_data.empty:
+            fig_comp_skill = go.Figure()
+            fig_comp_skill.add_trace(go.Bar(y=comp_skill_data['SKILL_NAME'], x=comp_skill_data['Vasant Valley School, New Delhi'], name='School', orientation='h', marker_color='#28a745'))
+            fig_comp_skill.add_trace(go.Bar(y=comp_skill_data['SKILL_NAME'], x=comp_skill_data['National Average'], name='National', orientation='h', marker_color='#ffc107'))
+            fig_comp_skill.update_layout(barmode='group', height=400, title="School vs National Average (Selected Skills)")
+            st.plotly_chart(fig_comp_skill, use_container_width=True)
+        else:
+            st.info("No micro-skill comparison data found.")
+
+# TAB 5: MISCONCEPTIONS & QUESTION ANALYSIS
 with tab_misconceptions:
     st.markdown('<div class="section-header">Diagnostic Analysis: Questions & Misconceptions</div>', unsafe_allow_html=True)
     
@@ -243,5 +308,66 @@ with tab_misconceptions:
             st.info(f"No specific records found for {selected_subject} in {selected_year}.")
     else:
         st.warning("Please ensure 'Misconceptions.csv' is uploaded to view question-level diagnostics.")
+
+# TAB 6: STUDENT ANALYSIS
+with tab_student:
+    st.markdown(f'<div class="section-header">Individual Learner Profiles - Grade {selected_grade}</div>', unsafe_allow_html=True)
+    
+    # Load correct dataset based on grade
+    current_data = g5.STUDENT_DATA if selected_grade == 5 else g8.STUDENT_DATA
+    
+    if current_data:
+        student_list = list(current_data.keys())
+        selected_student = st.selectbox("Select Student / Profile:", student_list)
+        
+        student_info = current_data[selected_student]
+        
+        st.markdown(f"#### Performance Overview: {selected_student}")
+        
+        c1, c2 = st.columns([1, 2])
+        
+        # Radar Chart for Percentiles
+        radar_df = pd.DataFrame([{
+            "Subject": sub, "Percentile": metrics.get("Percentile", 0)
+        } for sub, metrics in student_info.items()])
+        
+        with c1:
+            if not radar_df.empty:
+                fig_student_radar = px.line_polar(
+                    radar_df, r='Percentile', theta='Subject', line_close=True,
+                    title="Student Percentile Radar", range_r=[0, 100]
+                )
+                fig_student_radar.update_traces(fill='toself', marker_color='#6c5ce7')
+                st.plotly_chart(fig_student_radar, use_container_width=True)
+                
+        with c2:
+            st.markdown("##### Subject Details")
+            cols = st.columns(3)
+            i = 0
+            for sub, metrics in student_info.items():
+                with cols[i % 3]:
+                    st.markdown(f"""
+                    <div class="student-metric">
+                        <h4>{sub}</h4>
+                        <div class="value">{metrics.get('Raw', '-')}/{metrics.get('Total', '-')}</div>
+                        <div class="percentile">{metrics.get('Percentile', 0)}th Percentile</div>
+                        <div style="font-size: 12px; color: #888;">Scaled: {metrics.get('Scaled', '-')}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                i += 1
+                
+        # Show specific subject details if available
+        if selected_subject in student_info:
+            sub_metrics = student_info[selected_subject]
+            st.info(f"**Insight:** This student is currently scoring in the **{sub_metrics.get('Percentile', 0)}th percentile** in {selected_subject} nationally.")
+            
+        # Optional: Expandable Answer Keys block (Since answers were only provided for Grade 5 in the prompt, apply condition)
+        if selected_grade == 5 and hasattr(g5, 'ANSWER_KEYS'):
+            with st.expander("📝 View Grade 5 Official Answer Keys"):
+                for subject, key in g5.ANSWER_KEYS.items():
+                    st.markdown(f"**{subject}**: `{key}`")
+    else:
+        st.warning(f"No student profile data available for Grade {selected_grade}.")
+
 st.sidebar.markdown("---")
-st.sidebar.success("✅ Dashboard successfully upgraded with Question-Level Diagnostics.")
+st.sidebar.success("✅ Dashboard successfully upgraded with Performance Capabilities.")
