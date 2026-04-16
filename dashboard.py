@@ -209,55 +209,61 @@ with tab_skills:
 
 # TAB 3: HISTORICAL TRENDS
 with tab_yoy:
-    st.markdown(f'<div class="section-header">Historical Growth: {selected_subject}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">Historical Growth: All Subjects (Grade {selected_grade})</div>', unsafe_allow_html=True)
     if not yoy_df.empty:
-        sub_yoy = yoy_df[(yoy_df.iloc[:, 0].str.contains(str(selected_grade), na=False)) & (yoy_df['Subject'] == selected_subject)]
+        sub_yoy = yoy_df[yoy_df.iloc[:, 0].str.contains(str(selected_grade), na=False)]
         if not sub_yoy.empty:
             trend = sub_yoy.melt(id_vars=['Subject'], value_vars=['2022 [W]', '2023 [W]', '2024 [W]', '2025 [W]'], 
                                 var_name='Year', value_name='Score')
             trend['Year'] = trend['Year'].str.extract('(\d+)').astype(int)
-            fig_trend = px.line(trend, x='Year', y='Score', markers=True, text='Score')
+            fig_trend = px.line(trend, x='Year', y='Score', color='Subject', markers=True)
             fig_trend.update_layout(xaxis=dict(tickmode='linear'))
             st.plotly_chart(fig_trend, use_container_width=True)
 
 # TAB 4: COMPARISONS
 with tab_comparisons:
-    st.markdown(f'<div class="section-header">School Performance Comparisons - Grade {selected_grade}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">School Performance Comparisons (Grade 5 & 8 Side-by-Side)</div>', unsafe_allow_html=True)
     
-    st.markdown("### Subject Growth (2022 - 2025)")
-    if not df_sub.empty:
-        sub_data = df_sub[df_sub['Class'] == selected_grade]
-        if not sub_data.empty:
-            sub_trend = sub_data.melt(id_vars=['Subject'], value_vars=['2022', '2023', '2024', '2025'], 
-                                      var_name='Year', value_name='Score')
-            fig_sub_trend = px.line(sub_trend, x='Year', y='Score', color='Subject', markers=True, title=f"Subject Scaled Scores over Time (Grade {selected_grade})")
-            st.plotly_chart(fig_sub_trend, use_container_width=True)
-        else:
-            st.info("No subject trend data found.")
+    col5, col8 = st.columns(2)
+    
+    for col, g_val in zip([col5, col8], [5, 8]):
+        with col:
+            st.markdown(f"<h3 style='text-align: center; color: #007bff;'>Grade {g_val} Performance</h3>", unsafe_allow_html=True)
+            
+            st.markdown(f"#### Subject Growth (2022 - 2025)")
+            if not df_sub.empty:
+                sub_data = df_sub[df_sub['Class'] == g_val]
+                if not sub_data.empty:
+                    sub_trend = sub_data.melt(id_vars=['Subject'], value_vars=['2022', '2023', '2024', '2025'], 
+                                              var_name='Year', value_name='Score')
+                    fig_sub_trend = px.line(sub_trend, x='Year', y='Score', color='Subject', markers=True)
+                    st.plotly_chart(fig_sub_trend, use_container_width=True)
+                else:
+                    st.info(f"No subject trend data found for Grade {g_val}.")
+                    
+            st.markdown(f"#### Skill Benchmarking (2024 vs 2025)")
+            if not df_bench.empty:
+                bench_data = df_bench[df_bench['Class'] == g_val]
+                if not bench_data.empty:
+                    fig_bench = go.Figure()
+                    fig_bench.add_trace(go.Bar(x=bench_data['Subject'], y=bench_data['Vasant Valley School (New Delhi) (2024)'], name='2024', marker_color='#ced4da'))
+                    fig_bench.add_trace(go.Bar(x=bench_data['Subject'], y=bench_data['Vasant Valley School (New Delhi) (2025)'], name='2025', marker_color='#007bff'))
+                    fig_bench.update_layout(barmode='group')
+                    st.plotly_chart(fig_bench, use_container_width=True)
+                else:
+                    st.info(f"No skill benchmarking data found for Grade {g_val}.")
 
-    st.markdown("### Skill Benchmarking (2024 vs 2025)")
-    if not df_bench.empty:
-        bench_data = df_bench[df_bench['Class'] == selected_grade]
-        if not bench_data.empty:
-            fig_bench = go.Figure()
-            fig_bench.add_trace(go.Bar(x=bench_data['Subject'], y=bench_data['Vasant Valley School (New Delhi) (2024)'], name='2024', marker_color='#ced4da'))
-            fig_bench.add_trace(go.Bar(x=bench_data['Subject'], y=bench_data['Vasant Valley School (New Delhi) (2025)'], name='2025', marker_color='#007bff'))
-            fig_bench.update_layout(barmode='group', title=f"Year-over-Year Benchmarking (Grade {selected_grade})")
-            st.plotly_chart(fig_bench, use_container_width=True)
-        else:
-            st.info("No skill benchmarking data found.")
-
-    st.markdown("### Micro-Skill Performance vs National Average")
-    if not df_comp_skill.empty:
-        comp_skill_data = df_comp_skill[df_comp_skill['CLASS'] == selected_grade]
-        if not comp_skill_data.empty:
-            fig_comp_skill = go.Figure()
-            fig_comp_skill.add_trace(go.Bar(y=comp_skill_data['SKILL_NAME'], x=comp_skill_data['Vasant Valley School, New Delhi'], name='School', orientation='h', marker_color='#28a745'))
-            fig_comp_skill.add_trace(go.Bar(y=comp_skill_data['SKILL_NAME'], x=comp_skill_data['National Average'], name='National', orientation='h', marker_color='#ffc107'))
-            fig_comp_skill.update_layout(barmode='group', height=400, title="School vs National Average (Selected Skills)")
-            st.plotly_chart(fig_comp_skill, use_container_width=True)
-        else:
-            st.info("No micro-skill comparison data found.")
+            st.markdown("#### Micro-Skill vs National Average")
+            if not df_comp_skill.empty:
+                comp_skill_data = df_comp_skill[df_comp_skill['CLASS'] == g_val]
+                if not comp_skill_data.empty:
+                    fig_comp_skill = go.Figure()
+                    fig_comp_skill.add_trace(go.Bar(y=comp_skill_data['SKILL_NAME'], x=comp_skill_data['Vasant Valley School, New Delhi'], name='School', orientation='h', marker_color='#28a745'))
+                    fig_comp_skill.add_trace(go.Bar(y=comp_skill_data['SKILL_NAME'], x=comp_skill_data['National Average'], name='National', orientation='h', marker_color='#ffc107'))
+                    fig_comp_skill.update_layout(barmode='group', height=400)
+                    st.plotly_chart(fig_comp_skill, use_container_width=True)
+                else:
+                    st.info(f"No micro-skill comparison data found for Grade {g_val}.")
 
 # TAB 5: MISCONCEPTIONS & QUESTION ANALYSIS
 with tab_misconceptions:
@@ -311,12 +317,36 @@ with tab_misconceptions:
 
 # TAB 6: STUDENT ANALYSIS
 with tab_student:
-    st.markdown(f'<div class="section-header">Individual Learner Profiles - Grade {selected_grade}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-header">Student Performance Analysis - Grade {selected_grade}</div>', unsafe_allow_html=True)
     
     # Load correct dataset based on grade
     current_data = g5.STUDENT_DATA if selected_grade == 5 else g8.STUDENT_DATA
     
     if current_data:
+        # Comparative Case Study
+        st.markdown(f"#### 🌐 Comparative Case Study: All Grade {selected_grade} Students")
+        all_students_data = []
+        for name, info in current_data.items():
+            row = {"Student": name}
+            for sub in SUBJECT_MAP.keys():
+                row[sub] = info.get(sub, {}).get("Percentile", None)
+            all_students_data.append(row)
+        
+        df_all_students = pd.DataFrame(all_students_data)
+        
+        if not df_all_students.empty:
+            df_melted = df_all_students.melt(id_vars=["Student"], var_name="Subject", value_name="Percentile")
+            fig_all = px.bar(df_melted, x="Student", y="Percentile", color="Subject", 
+                             barmode="group", title=f"All-Student Comparison (Percentiles)",
+                             height=500)
+            st.plotly_chart(fig_all, use_container_width=True)
+            
+            with st.expander("📄 View Underlying Data (Percentiles)"):
+                st.dataframe(df_all_students, use_container_width=True)
+        
+        st.markdown("---")
+        st.markdown(f"#### 👤 Individual Learner Profile")
+        
         student_list = list(current_data.keys())
         selected_student = st.selectbox("Select Student / Profile:", student_list)
         
