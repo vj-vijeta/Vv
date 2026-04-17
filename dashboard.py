@@ -127,11 +127,25 @@ def load_average_data():
         return df
     return pd.DataFrame()
 
+@st.cache_data
+def load_asset_student_data():
+    path = os.path.join(ASSET_DIR, "Asset student data.csv")
+    if os.path.exists(path):
+        try:
+            df = pd.read_csv(path)
+            # Remove any trailing whitespaces in column names to be safe
+            df.columns = [c.strip() for c in df.columns]
+            return df
+        except Exception as e:
+            return pd.DataFrame()
+    return pd.DataFrame()
+
 # --- Initialize Data ---
 yoy_df = load_yoy_data()
 question_df = load_question_data()
 df_bench, df_comp_skill, df_sub = load_comparison_data()
 avg_data_df = load_average_data()
+asset_student_df = load_asset_student_data()
 
 # --- Sidebar Controls ---
 st.sidebar.image("https://ei.study/wp-content/uploads/2022/10/edilogo.png", width=60)
@@ -161,6 +175,19 @@ tab_birdseye, tab_skills, tab_yoy, tab_comparisons, tab_misconceptions, tab_stud
 # TAB 1: BIRD'S-EYE VIEW
 with tab_birdseye:
     st.markdown(f'<div class="section-header">Overall Grade {selected_grade} Performance</div>', unsafe_allow_html=True)
+    
+    if not asset_student_df.empty:
+        grade_asset_data = asset_student_df[asset_student_df['Class'] == selected_grade]
+        if not grade_asset_data.empty:
+            st.markdown(f"**Overall Average Scaled Scores (from Full Student Data)**")
+            scaled_cols = st.columns(len(SUBJECT_MAP))
+            for i, sub_name in enumerate(SUBJECT_MAP.keys()):
+                sub_asset = grade_asset_data[grade_asset_data['Subject'].str.lower() == sub_name.lower()]
+                if not sub_asset.empty and 'Scaled Score' in sub_asset.columns:
+                    avg_scaled = pd.to_numeric(sub_asset['Scaled Score'], errors='coerce').mean()
+                    if pd.notna(avg_scaled):
+                        scaled_cols[i].metric(label=f"{sub_name} (Scaled)", value=f"{avg_scaled:.0f}")
+
     if not yoy_df.empty:
         # Filtering for the specific grade (e.g., 'Class 5')
         grade_data = yoy_df[yoy_df.iloc[:, 0].str.contains(str(selected_grade), na=False)]
@@ -191,48 +218,55 @@ with tab_birdseye:
         avg_student_metrics = []
         if current_data:
             for sub in SUBJECT_MAP.keys():
-                pct_scores = [info[sub]['Percentile'] for info in current_data.values() if sub in info and 'Percentile' in info[sub]]
-                if pct_scores:
+                scaled_scores = [info[sub]['Scaled'] for info in current_data.values() if sub in info and 'Scaled' in info[sub]]
+                raw_pcts = []
+                for info in current_data.values():
+                    if sub in info and 'Raw' in info[sub] and 'Total' in info[sub] and info[sub]['Total'] > 0:
+                        raw_pcts.append((info[sub]['Raw']/info[sub]['Total'])*100)
+                        
+                if scaled_scores or raw_pcts:
                     avg_student_metrics.append({
                         "Subject": sub, 
-                        "Average Percentile": sum(pct_scores)/len(pct_scores),
+                        "Avg Scaled Score": sum(scaled_scores)/len(scaled_scores) if scaled_scores else 0,
+                        "Avg Raw %": sum(raw_pcts)/len(raw_pcts) if raw_pcts else 0
                     })
             
             df_avg_student = pd.DataFrame(avg_student_metrics)
             if not df_avg_student.empty:
                 c3, c4 = st.columns(2)
                 with c3:
-                    fig_avg_bar = px.bar(df_avg_student, x='Subject', y='Average Percentile', color='Subject',
-                                        title=f"Sample Students: Avg Percentile", text_auto='.1f')
-                    fig_avg_bar.update_layout(yaxis_range=[0,100], showlegend=False)
-                    st.plotly_chart(fig_avg_bar, use_container_width=True)
-                with c4:
-                    # Filter average data for the selected grade
-                    class_avg_data = pd.DataFrame()
-                    if not avg_data_df.empty:
-                        class_avg_data = avg_data_df[avg_data_df['Class'] == selected_grade]
-                        val_col = 'Vasant Valley School (2025)'
-                        if val_col in class_avg_data.columns:
-                            class_avg_data = class_avg_data[['Subject', val_col]].rename(columns={val_col: 'Overall Average'})
+                    overall_scaled_metrics = []
+                    if not asset_student_df.empty:
+                        grade_asset_data = asset_student_df[asset_student_df['Class'] == selected_grade]
+                        for sub in SUBJECT_MAP.keys():
+                            sub_asset = grade_asset_data[grade_asset_data['Subject'].str.lower() == sub.lower()]
+                            if not sub_asset.empty and 'Scaled Score' in sub_asset.columns:
+                                avg_scaled = pd.to_numeric(sub_asset['Scaled Score'], errors='coerce').mean()
+                                if pd.notna(avg_scaled):
+                                    overall_scaled_metrics.append({"Subject": sub, "Overall Avg Scaled": avg_scaled})
                     
-                    if not class_avg_data.empty:
-                        merged_comp = pd.merge(class_avg_data, df_avg_student, on="Subject", how="inner")
+                    df_overall_scaled = pd.DataFrame(overall_scaled_metrics)
+                    
+                    if not df_overall_scaled.empty:
+                        merged_scaled = pd.merge(df_avg_student, df_overall_scaled, on="Subject", how="left")
+                        fig_avg_bar = go.Figure()
+                        fig_avg_bar.add_trace(go.Bar(x=merged_scaled['Subject'], y=merged_scaled['Overall Avg Scaled'], name='Overall Grade Avg Scaled', marker_color='#28a745'))
+                        fig_avg_bar.add_trace(go.Bar(x=merged_scaled['Subject'], y=merged_scaled['Avg Scaled Score'], name='Sample Avg Scaled', marker_color='#17a2b8'))
+                        fig_avg_bar.update_layout(title="Overall Grade vs Sample Students Average Scaled Score", barmode='group')
+                        st.plotly_chart(fig_avg_bar, use_container_width=True)
                     else:
-                        merged_comp = df_avg_student.copy()
-                        merged_comp['Overall Average'] = 0
-                        
-                    fig_comp = go.Figure()
-                    fig_comp.add_trace(go.Bar(x=merged_comp['Subject'], y=merged_comp['Overall Average'], name='Overall School Score (2025)', yaxis='y', marker_color='#007bff'))
-                    fig_comp.add_trace(go.Scatter(x=merged_comp['Subject'], y=merged_comp['Average Percentile'], name='Sample Avg Pctl', mode='lines+markers', yaxis='y', line=dict(color='#dc3545', width=3)))
-                    fig_comp.update_layout(
-                        title="Overall School Score vs Sample Student Percentile",
-                        yaxis=dict(title="Score / Percentile", range=[0, 100]),
-                        barmode='group'
-                    )
-                    st.plotly_chart(fig_comp, use_container_width=True)
+                        fig_avg_bar = px.bar(df_avg_student, x='Subject', y='Avg Scaled Score', color='Subject',
+                                            title=f"Sample Students: Avg Scaled Score", text_auto='.0f')
+                        fig_avg_bar.update_layout(showlegend=False)
+                        st.plotly_chart(fig_avg_bar, use_container_width=True)
+                with c4:
+                    fig_raw_bar = px.bar(df_avg_student, x='Subject', y='Avg Raw %', color='Subject',
+                                        title=f"Sample Students: Avg Raw %", text_auto='.0f')
+                    fig_raw_bar.update_layout(yaxis=dict(title="Raw Score %", range=[0, 100]), showlegend=False)
+                    st.plotly_chart(fig_raw_bar, use_container_width=True)
 
         st.markdown("---")
-        st.markdown(f"#### 🏆 Student Categories-RTE (Score/Percentile)")
+        st.markdown(f"#### 🏆 Student Categories-RTE (Based on Raw Score %)")
         
         cat_data = []
         
@@ -250,28 +284,25 @@ with tab_birdseye:
             
             for sub, metrics in info.items():
                 if isinstance(metrics, dict):
-                    pct = metrics.get('Percentile', 0)
-                    val = pct
                     if 'Raw' in metrics and 'Total' in metrics and metrics['Total'] > 0:
                         val = (metrics['Raw'] / metrics['Total']) * 100
+                        formatted_str = f"{sub} ({val:.0f}%)"
                         
-                    formatted_str = f"{sub} ({val:.0f}%)"
-                    
-                    if val >= 80:
-                        band_80_100.append(formatted_str)
-                        if sub in tally: tally[sub]["🏆 High (80-100%)"] += 1
-                    elif val >= 60:
-                        band_60_80.append(formatted_str)
-                        if sub in tally: tally[sub]["📈 Average (60-79%)"] += 1
-                    elif val >= 50:
-                        band_50_60.append(formatted_str)
-                        if sub in tally: tally[sub]["⚠️ Watchlist (50-59%)"] += 1
-                    elif val >= 40:
-                        band_40_50.append(formatted_str)
-                        if sub in tally: tally[sub]["🟠 At Risk (40-49%)"] += 1
-                    else:
-                        band_below_40.append(formatted_str)
-                        if sub in tally: tally[sub]["🔴 Critical (<40%)"] += 1
+                        if val >= 80:
+                            band_80_100.append(formatted_str)
+                            if sub in tally: tally[sub]["🏆 High (80-100%)"] += 1
+                        elif val >= 60:
+                            band_60_80.append(formatted_str)
+                            if sub in tally: tally[sub]["📈 Average (60-79%)"] += 1
+                        elif val >= 50:
+                            band_50_60.append(formatted_str)
+                            if sub in tally: tally[sub]["⚠️ Watchlist (50-59%)"] += 1
+                        elif val >= 40:
+                            band_40_50.append(formatted_str)
+                            if sub in tally: tally[sub]["🟠 At Risk (40-49%)"] += 1
+                        else:
+                            band_below_40.append(formatted_str)
+                            if sub in tally: tally[sub]["🔴 Critical (<40%)"] += 1
                         
             if band_80_100 or band_60_80 or band_50_60 or band_40_50 or band_below_40:
                 cat_data.append({
@@ -446,24 +477,28 @@ with tab_student:
     
     if current_data:
         # Comparative Case Study
-        st.markdown(f"#### 🌐 Comparative Case Study: All Grade {selected_grade} Students")
+        st.markdown(f"#### 🌐 Comparative Case Study: All Grade {selected_grade} Students (Raw %)")
         all_students_data = []
         for name, info in current_data.items():
             row = {"Student": name}
             for sub in SUBJECT_MAP.keys():
-                row[sub] = info.get(sub, {}).get("Percentile", None)
+                sub_info = info.get(sub, {})
+                if 'Raw' in sub_info and 'Total' in sub_info and sub_info['Total'] > 0:
+                    row[sub] = (sub_info['Raw'] / sub_info['Total']) * 100
+                else:
+                    row[sub] = 0
             all_students_data.append(row)
         
         df_all_students = pd.DataFrame(all_students_data)
         
         if not df_all_students.empty:
-            df_melted = df_all_students.melt(id_vars=["Student"], var_name="Subject", value_name="Percentile")
-            fig_all = px.bar(df_melted, x="Student", y="Percentile", color="Subject", 
-                             barmode="group", title=f"All-Student Comparison (Percentiles)",
+            df_melted = df_all_students.melt(id_vars=["Student"], var_name="Subject", value_name="Raw %")
+            fig_all = px.bar(df_melted, x="Student", y="Raw %", color="Subject", 
+                             barmode="group", title=f"All-Student Comparison (Raw %)",
                              height=500)
             st.plotly_chart(fig_all, use_container_width=True)
             
-            with st.expander("📄 View Underlying Data (Percentiles)"):
+            with st.expander("📄 View Underlying Data (Raw %)"):
                 st.dataframe(df_all_students, use_container_width=True)
         
         st.markdown("---")
@@ -478,16 +513,16 @@ with tab_student:
         
         c1, c2 = st.columns([1, 2])
         
-        # Radar Chart for Percentiles
+        # Radar Chart for Raw %
         radar_df = pd.DataFrame([{
-            "Subject": sub, "Percentile": metrics.get("Percentile", 0)
+            "Subject": sub, "Raw %": (metrics['Raw'] / metrics['Total']) * 100 if 'Raw' in metrics and 'Total' in metrics and metrics['Total'] > 0 else 0
         } for sub, metrics in student_info.items()])
         
         with c1:
             if not radar_df.empty:
                 fig_student_radar = px.line_polar(
-                    radar_df, r='Percentile', theta='Subject', line_close=True,
-                    title="Student Percentile Radar", range_r=[0, 100]
+                    radar_df, r='Raw %', theta='Subject', line_close=True,
+                    title="Student Performance Radar (Raw %)", range_r=[0, 100]
                 )
                 fig_student_radar.update_traces(fill='toself', marker_color='#6c5ce7')
                 st.plotly_chart(fig_student_radar, use_container_width=True)
@@ -498,11 +533,12 @@ with tab_student:
             i = 0
             for sub, metrics in student_info.items():
                 with cols[i % 3]:
+                    val = (metrics['Raw'] / metrics['Total']) * 100 if 'Raw' in metrics and 'Total' in metrics and metrics['Total'] > 0 else 0
                     st.markdown(f"""
                     <div class="student-metric">
                         <h4>{sub}</h4>
                         <div class="value">{metrics.get('Raw', '-')}/{metrics.get('Total', '-')}</div>
-                        <div class="percentile">{metrics.get('Percentile', 0)}th Percentile</div>
+                        <div class="percentile">{val:.0f}% Raw Score</div>
                         <div style="font-size: 12px; color: #888;">Scaled: {metrics.get('Scaled', '-')}</div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -511,7 +547,8 @@ with tab_student:
         # Show specific subject details if available
         if selected_subject in student_info:
             sub_metrics = student_info[selected_subject]
-            st.info(f"**Insight:** This student is currently scoring in the **{sub_metrics.get('Percentile', 0)}th percentile** in {selected_subject} nationally.")
+            val = (sub_metrics['Raw'] / sub_metrics['Total']) * 100 if 'Raw' in sub_metrics and 'Total' in sub_metrics and sub_metrics['Total'] > 0 else 0
+            st.info(f"**Insight:** This student is currently scoring **{val:.0f}%** in {selected_subject}.")
             
         # Optional: Expandable Answer Keys block (Since answers were only provided for Grade 5 in the prompt, apply condition)
         if selected_grade == 5 and hasattr(g5, 'ANSWER_KEYS'):
