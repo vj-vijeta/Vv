@@ -260,10 +260,29 @@ with tab_birdseye:
                         fig_avg_bar.update_layout(showlegend=False)
                         st.plotly_chart(fig_avg_bar, use_container_width=True)
                 with c4:
-                    fig_raw_bar = px.bar(df_avg_student, x='Subject', y='Avg Raw %', color='Subject',
-                                        title=f"Sample Students: Avg Raw %", text_auto='.0f')
-                    fig_raw_bar.update_layout(yaxis=dict(title="Raw Score %", range=[0, 100]), showlegend=False)
-                    st.plotly_chart(fig_raw_bar, use_container_width=True)
+                    overall_raw_metrics = []
+                    if not avg_data_df.empty:
+                        class_avg_data = avg_data_df[avg_data_df['Class'] == selected_grade]
+                        val_col = 'Vasant Valley School (2025)'
+                        if val_col in class_avg_data.columns:
+                            class_avg_data = class_avg_data[['Subject', val_col]].rename(columns={val_col: 'Overall Average'})
+                            for _, row in class_avg_data.iterrows():
+                                overall_raw_metrics.append({"Subject": row['Subject'], "Overall Avg Raw %": row['Overall Average']})
+                    
+                    df_overall_raw = pd.DataFrame(overall_raw_metrics)
+                    
+                    if not df_overall_raw.empty:
+                        merged_raw = pd.merge(df_avg_student, df_overall_raw, on="Subject", how="left")
+                        fig_raw_bar = go.Figure()
+                        fig_raw_bar.add_trace(go.Bar(x=merged_raw['Subject'], y=merged_raw['Overall Avg Raw %'], name='Overall Grade Avg Raw %', marker_color='#ffc107'))
+                        fig_raw_bar.add_trace(go.Bar(x=merged_raw['Subject'], y=merged_raw['Avg Raw %'], name='Sample Avg Raw %', marker_color='#dc3545'))
+                        fig_raw_bar.update_layout(title="Overall Grade vs Sample Students Average Raw %", barmode='group', yaxis=dict(title="Raw Score %", range=[0, 100]))
+                        st.plotly_chart(fig_raw_bar, use_container_width=True)
+                    else:
+                        fig_raw_bar = px.bar(df_avg_student, x='Subject', y='Avg Raw %', color='Subject',
+                                            title=f"Sample Students: Avg Raw %", text_auto='.0f')
+                        fig_raw_bar.update_layout(yaxis=dict(title="Raw Score %", range=[0, 100]), showlegend=False)
+                        st.plotly_chart(fig_raw_bar, use_container_width=True)
 
         st.markdown("---")
         st.markdown(f"#### 🏆 Student Categories-RTE (Based on Raw Score %)")
