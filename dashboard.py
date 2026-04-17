@@ -230,6 +230,37 @@ with tab_birdseye:
                         barmode='group'
                     )
                     st.plotly_chart(fig_comp, use_container_width=True)
+
+        st.markdown("---")
+        st.markdown(f"#### 🏆 High Achieving Students-RTE (>80% Score/Percentile in any subject)")
+        
+        high_achievers = []
+        for name, info in current_data.items():
+            top_subjects = []
+            for sub, metrics in info.items():
+                if isinstance(metrics, dict):
+                    pct = metrics.get('Percentile', 0)
+                    if 'Raw' in metrics and 'Total' in metrics and metrics['Total'] > 0:
+                        percentage = (metrics['Raw'] / metrics['Total']) * 100
+                        if percentage >= 80:
+                            top_subjects.append(f"{sub} ({percentage:.0f}%)")
+                        elif pct >= 80:
+                            top_subjects.append(f"{sub} ({pct}th Pctl)")
+                    else:
+                        if pct >= 80:
+                            top_subjects.append(f"{sub} ({pct}th Pctl)")
+            
+            if top_subjects:
+                high_achievers.append({
+                    "Student / Profile": name,
+                    "Top Performing Subjects": ", ".join(top_subjects)
+                })
+        
+        if high_achievers:
+            st.table(pd.DataFrame(high_achievers))
+        else:
+            st.info("No students found with >80% performance in any subject.")
+            
     else:
         st.error(f"No YoY data files found in the '{ASSET_DIR}' folder.")
 
