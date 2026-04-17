@@ -245,10 +245,10 @@ with tab_birdseye:
                         if percentage >= 80:
                             top_subjects.append(f"{sub} ({percentage:.0f}%)")
                         elif pct >= 80:
-                            top_subjects.append(f"{sub} ({pct}th Pctl)")
+                            top_subjects.append(f"{sub} ({pct}%)")
                     else:
                         if pct >= 80:
-                            top_subjects.append(f"{sub} ({pct}th Pctl)")
+                            top_subjects.append(f"{sub} ({pct}%)")
             
             if top_subjects:
                 high_achievers.append({
