@@ -232,34 +232,70 @@ with tab_birdseye:
                     st.plotly_chart(fig_comp, use_container_width=True)
 
         st.markdown("---")
-        st.markdown(f"#### 🏆 High Achieving Students-RTE (>80% Score/Percentile in any subject)")
+        st.markdown(f"#### 🏆 Student Categories-RTE (Score/Percentile)")
         
-        high_achievers = []
+        cat_data = []
+        
+        tally = {
+            sub: {"🏆 High (80-100%)": 0, "📈 Average (60-79%)": 0, "⚠️ Watchlist (50-59%)": 0, "🟠 At Risk (40-49%)": 0, "🔴 Critical (<40%)": 0} 
+            for sub in SUBJECT_MAP.keys()
+        }
+        
         for name, info in current_data.items():
-            top_subjects = []
+            band_80_100 = []
+            band_60_80 = []
+            band_50_60 = []
+            band_40_50 = []
+            band_below_40 = []
+            
             for sub, metrics in info.items():
                 if isinstance(metrics, dict):
                     pct = metrics.get('Percentile', 0)
+                    val = pct
                     if 'Raw' in metrics and 'Total' in metrics and metrics['Total'] > 0:
-                        percentage = (metrics['Raw'] / metrics['Total']) * 100
-                        if percentage >= 80:
-                            top_subjects.append(f"{sub} ({percentage:.0f}%)")
-                        elif pct >= 80:
-                            top_subjects.append(f"{sub} ({pct}%)")
+                        val = (metrics['Raw'] / metrics['Total']) * 100
+                        
+                    formatted_str = f"{sub} ({val:.0f}%)"
+                    
+                    if val >= 80:
+                        band_80_100.append(formatted_str)
+                        if sub in tally: tally[sub]["🏆 High (80-100%)"] += 1
+                    elif val >= 60:
+                        band_60_80.append(formatted_str)
+                        if sub in tally: tally[sub]["📈 Average (60-79%)"] += 1
+                    elif val >= 50:
+                        band_50_60.append(formatted_str)
+                        if sub in tally: tally[sub]["⚠️ Watchlist (50-59%)"] += 1
+                    elif val >= 40:
+                        band_40_50.append(formatted_str)
+                        if sub in tally: tally[sub]["🟠 At Risk (40-49%)"] += 1
                     else:
-                        if pct >= 80:
-                            top_subjects.append(f"{sub} ({pct}%)")
-            
-            if top_subjects:
-                high_achievers.append({
+                        band_below_40.append(formatted_str)
+                        if sub in tally: tally[sub]["🔴 Critical (<40%)"] += 1
+                        
+            if band_80_100 or band_60_80 or band_50_60 or band_40_50 or band_below_40:
+                cat_data.append({
                     "Student / Profile": name,
-                    "Top Performing Subjects": ", ".join(top_subjects)
+                    "🏆 High (80-100%)": ", ".join(band_80_100) if band_80_100 else "-",
+                    "📈 Average (60-79%)": ", ".join(band_60_80) if band_60_80 else "-",
+                    "⚠️ Watchlist (50-59%)": ", ".join(band_50_60) if band_50_60 else "-",
+                    "🟠 At Risk (40-49%)": ", ".join(band_40_50) if band_40_50 else "-",
+                    "🔴 Critical (<40%)": ", ".join(band_below_40) if band_below_40 else "-"
                 })
-        
-        if high_achievers:
-            st.table(pd.DataFrame(high_achievers))
+
+        st.markdown(f"#### 📊 Subject-wise RTE Headcount per Category")
+        tally_data = []
+        for sub, counts in tally.items():
+            row = {"Subject": sub}
+            row.update(counts)
+            tally_data.append(row)
+        st.dataframe(pd.DataFrame(tally_data), use_container_width=True)
+
+        st.markdown(f"#### 👨‍🎓 Detailed Student Categories-RTE Profiles")
+        if cat_data:
+            st.dataframe(pd.DataFrame(cat_data), use_container_width=True)
         else:
-            st.info("No students found with >80% performance in any subject.")
+            st.info("No students found in these brackets.")
             
     else:
         st.error(f"No YoY data files found in the '{ASSET_DIR}' folder.")
