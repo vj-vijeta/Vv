@@ -118,10 +118,20 @@ def load_comparison_data():
     
     return df_bench, df_skill, df_sub
 
+@st.cache_data
+def load_average_data():
+    path = os.path.join(ASSET_DIR, "average data.csv")
+    if os.path.exists(path):
+        df = pd.read_csv(path)
+        df.columns = [c.replace('\ufeff', '').strip() for c in df.columns]
+        return df
+    return pd.DataFrame()
+
 # --- Initialize Data ---
 yoy_df = load_yoy_data()
 question_df = load_question_data()
 df_bench, df_comp_skill, df_sub = load_comparison_data()
+avg_data_df = load_average_data()
 
 # --- Sidebar Controls ---
 st.sidebar.image("https://ei.study/wp-content/uploads/2022/10/edilogo.png", width=60)
@@ -175,6 +185,51 @@ with tab_birdseye:
                                       title="Grade Balance Radar")
             fig_radar.update_traces(fill='toself')
             st.plotly_chart(fig_radar, use_container_width=True)
+
+        st.markdown(f'<div class="section-header">Student Profiles: Collective Average Comparison (Grade {selected_grade})</div>', unsafe_allow_html=True)
+        current_data = g5.STUDENT_DATA if selected_grade == 5 else g8.STUDENT_DATA
+        avg_student_metrics = []
+        if current_data:
+            for sub in SUBJECT_MAP.keys():
+                pct_scores = [info[sub]['Percentile'] for info in current_data.values() if sub in info and 'Percentile' in info[sub]]
+                if pct_scores:
+                    avg_student_metrics.append({
+                        "Subject": sub, 
+                        "Average Percentile": sum(pct_scores)/len(pct_scores),
+                    })
+            
+            df_avg_student = pd.DataFrame(avg_student_metrics)
+            if not df_avg_student.empty:
+                c3, c4 = st.columns(2)
+                with c3:
+                    fig_avg_bar = px.bar(df_avg_student, x='Subject', y='Average Percentile', color='Subject',
+                                        title=f"Sample Students: Avg Percentile", text_auto='.1f')
+                    fig_avg_bar.update_layout(yaxis_range=[0,100], showlegend=False)
+                    st.plotly_chart(fig_avg_bar, use_container_width=True)
+                with c4:
+                    # Filter average data for the selected grade
+                    class_avg_data = pd.DataFrame()
+                    if not avg_data_df.empty:
+                        class_avg_data = avg_data_df[avg_data_df['Class'] == selected_grade]
+                        val_col = 'Vasant Valley School (2025)'
+                        if val_col in class_avg_data.columns:
+                            class_avg_data = class_avg_data[['Subject', val_col]].rename(columns={val_col: 'Overall Average'})
+                    
+                    if not class_avg_data.empty:
+                        merged_comp = pd.merge(class_avg_data, df_avg_student, on="Subject", how="inner")
+                    else:
+                        merged_comp = df_avg_student.copy()
+                        merged_comp['Overall Average'] = 0
+                        
+                    fig_comp = go.Figure()
+                    fig_comp.add_trace(go.Bar(x=merged_comp['Subject'], y=merged_comp['Overall Average'], name='Overall School Score (2025)', yaxis='y', marker_color='#007bff'))
+                    fig_comp.add_trace(go.Scatter(x=merged_comp['Subject'], y=merged_comp['Average Percentile'], name='Sample Avg Pctl', mode='lines+markers', yaxis='y', line=dict(color='#dc3545', width=3)))
+                    fig_comp.update_layout(
+                        title="Overall School Score vs Sample Student Percentile",
+                        yaxis=dict(title="Score / Percentile", range=[0, 100]),
+                        barmode='group'
+                    )
+                    st.plotly_chart(fig_comp, use_container_width=True)
     else:
         st.error(f"No YoY data files found in the '{ASSET_DIR}' folder.")
 
